@@ -1,0 +1,52 @@
+---
+# Dell PowerStore iSCSI Storage Class
+# This storage class provides block storage via iSCSI protocol from PowerStore array
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: powerstore-iscsi
+  annotations:
+    # Set as default storage class (optional)
+    storageclass.kubernetes.io/is-default-class: "true"
+
+    # Description
+    description: "Dell PowerStore iSCSI block storage for VM volumes"
+
+# Provisioner - Dell PowerStore CSI driver
+provisioner: csi-powerstore.dellemc.com
+
+# Parameters for PowerStore provisioning
+parameters:
+  # Filesystem type (for filesystem volumes)
+  csi.storage.k8s.io/fstype: "ext4"
+
+  # PowerStore array ID (globalID)
+  # Replace with your PowerStore array globalID
+  arrayID: "PSd0f53d7a1828"
+
+  # CSI secrets for volume operations
+  csi.storage.k8s.io/controller-expand-secret-name: "powerstore-creds"
+  csi.storage.k8s.io/controller-expand-secret-namespace: "csi-powerstore"
+  csi.storage.k8s.io/controller-publish-secret-name: "powerstore-creds"
+  csi.storage.k8s.io/controller-publish-secret-namespace: "csi-powerstore"
+  csi.storage.k8s.io/node-publish-secret-name: "powerstore-creds"
+  csi.storage.k8s.io/node-publish-secret-namespace: "csi-powerstore"
+  csi.storage.k8s.io/node-stage-secret-name: "powerstore-creds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "csi-powerstore"
+
+# Volume binding mode
+# WaitForFirstConsumer: Delay binding until pod is scheduled (recommended for better placement)
+# Immediate: Bind PVC immediately
+volumeBindingMode: WaitForFirstConsumer
+
+# Allow volume expansion
+allowVolumeExpansion: true
+
+# Reclaim policy
+# Delete: Delete volume when PVC is deleted
+# Retain: Keep volume when PVC is deleted
+reclaimPolicy: Delete
+
+# Mount options (optional)
+mountOptions:
+  - noatime  # Don't update access time on file reads (improves performance)

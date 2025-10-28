@@ -1,0 +1,23 @@
+---
+# Test PVC for PowerStore Storage Provisioning
+# Use this to verify PowerStore CSI driver and storage class are working correctly
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-powerstore-pvc
+  namespace: default
+spec:
+  # Access mode
+  accessModes:
+    - ReadWriteOnce
+
+  # Volume mode: Block or Filesystem
+  volumeMode: Block
+
+  # Storage class
+  storageClassName: powerstore-iscsi
+
+  # Requested storage size
+  resources:
+    requests:
+      storage: 1Gi

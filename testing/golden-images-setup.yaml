@@ -1,0 +1,185 @@
+---
+# Golden Images Setup for kubevirt-storage-checkup with PowerStore
+# These DataImportCrons will create bootable VM images using PowerStore storage
+
+# 1. Create namespace for golden images
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt-os-images
+  labels:
+    app: kubevirt-os-images
+
+---
+# 2. Fedora Golden Image
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataImportCron
+metadata:
+  name: fedora-image-cron
+  namespace: kubevirt-os-images
+spec:
+  # Schedule: Daily at 2 AM
+  schedule: "0 2 * * *"
+
+  # Managed DataSource name
+  managedDataSource: fedora-image
+
+  # Template for DataVolume
+  template:
+    spec:
+      # Source: Fedora Cloud image from registry
+      source:
+        registry:
+          url: "docker://quay.io/containerdisks/fedora:latest"
+          pullMethod: node
+
+      # PVC specification - using PowerStore storage
+      pvc:
+        # Use PowerStore ext4 storage class
+        storageClassName: powerstore-ext4
+
+        # Size of the image PVC
+        resources:
+          requests:
+            storage: 15Gi
+
+        # Access mode
+        accessModes:
+          - ReadWriteOnce
+
+        # Volume mode
+        volumeMode: Filesystem
+
+  # Retention policy
+  garbageCollect: Outdated
+  importsToKeep: 3
+
+---
+# 3. Ubuntu Golden Image
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataImportCron
+metadata:
+  name: ubuntu-image-cron
+  namespace: kubevirt-os-images
+spec:
+  # Schedule: Daily at 3 AM
+  schedule: "0 3 * * *"
+
+  # Managed DataSource name
+  managedDataSource: ubuntu-image
+
+  # Template for DataVolume
+  template:
+    spec:
+      # Source: Ubuntu Cloud image from HTTP
+      source:
+        http:
+          url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+
+      # PVC specification - using PowerStore storage
+      pvc:
+        # Use PowerStore ext4 storage class
+        storageClassName: powerstore-ext4
+
+        # Size of the image PVC
+        resources:
+          requests:
+            storage: 15Gi
+
+        # Access mode
+        accessModes:
+          - ReadWriteOnce
+
+        # Volume mode
+        volumeMode: Filesystem
+
+  # Retention policy
+  garbageCollect: Outdated
+  importsToKeep: 3
+
+---
+# 4. CentOS Stream Golden Image
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataImportCron
+metadata:
+  name: centos-stream-image-cron
+  namespace: kubevirt-os-images
+spec:
+  # Schedule: Daily at 4 AM
+  schedule: "0 4 * * *"
+
+  # Managed DataSource name
+  managedDataSource: centos-stream-image
+
+  # Template for DataVolume
+  template:
+    spec:
+      # Source: CentOS Stream from registry
+      source:
+        registry:
+          url: "docker://quay.io/containerdisks/centos-stream:9"
+          pullMethod: node
+
+      # PVC specification - using PowerStore storage
+      pvc:
+        # Use PowerStore ext4 storage class
+        storageClassName: powerstore-ext4
+
+        # Size of the image PVC
+        resources:
+          requests:
+            storage: 15Gi
+
+        # Access mode
+        accessModes:
+          - ReadWriteOnce
+
+        # Volume mode
+        volumeMode: Filesystem
+
+  # Retention policy
+  garbageCollect: Outdated
+  importsToKeep: 3
+
+---
+# 5. Cirros Test Image (Lightweight for quick testing)
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataImportCron
+metadata:
+  name: cirros-image-cron
+  namespace: kubevirt-os-images
+spec:
+  # Schedule: Daily at 1 AM
+  schedule: "0 1 * * *"
+
+  # Managed DataSource name
+  managedDataSource: cirros-image
+
+  # Template for DataVolume
+  template:
+    spec:
+      # Source: Cirros lightweight image
+      source:
+        http:
+          url: "http://download.cirros-cloud.net/0.5.2/cirros-0.5.2-x86_64-disk.img"
+
+      # PVC specification - using PowerStore storage
+      pvc:
+        # Use PowerStore ext4 storage class
+        storageClassName: powerstore-ext4
+
+        # Size of the image PVC (Cirros is tiny)
+        resources:
+          requests:
+            storage: 1Gi
+
+        # Access mode
+        accessModes:
+          - ReadWriteOnce
+
+        # Volume mode
+        volumeMode: Filesystem
+
+  # Retention policy
+  garbageCollect: Outdated
+  importsToKeep: 3

@@ -1,0 +1,57 @@
+---
+# Fedora Golden Image for PowerStore
+# DataImportCron that creates and maintains a bootable Fedora VM image on PowerStore storage
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataImportCron
+metadata:
+  name: fedora-image-cron
+  namespace: kubevirt-os-images
+  labels:
+    app: golden-images
+    os: fedora
+    storage: powerstore
+spec:
+  # Schedule: Daily at 2 AM
+  # Cron format: minute hour day-of-month month day-of-week
+  schedule: "0 2 * * *"
+
+  # Managed DataSource name
+  # This DataSource will be created/updated automatically
+  managedDataSource: fedora-image
+
+  # Template for DataVolume creation
+  template:
+    spec:
+      # Source: Fedora Cloud image from Quay registry
+      source:
+        registry:
+          # Container disk image
+          url: "docker://quay.io/containerdisks/fedora:latest"
+
+          # Pull method: node (pull on each node) or pod (pull in importer pod)
+          pullMethod: node
+
+      # PVC specification - using PowerStore storage
+      pvc:
+        # Use PowerStore iSCSI storage class
+        storageClassName: powerstore-iscsi
+
+        # Size of the image PVC
+        resources:
+          requests:
+            storage: 5Gi
+
+        # Access mode
+        accessModes:
+          - ReadWriteOnce
+
+        # Volume mode (Block is recommended for VM images)
+        volumeMode: Block
+
+  # Garbage collection policy
+  # Outdated: Delete old imports when new one succeeds
+  # Never: Keep all imports
+  garbageCollect: Outdated
+
+  # Number of successful imports to keep
+  importsToKeep: 3

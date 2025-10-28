@@ -1,0 +1,29 @@
+---
+# PowerStore Debug Configuration
+# This configuration is useful for troubleshooting issues
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-checkup-config
+  namespace: kubevirt-storage-checkup-test
+data:
+  # Long timeout for debugging
+  spec.timeout: "30m"
+
+  # Platform
+  spec.param.platform: "vanilla-k8s"
+
+  # Golden images namespace
+  spec.param.goldenImagesNamespace: "kubevirt-os-images"
+
+  # Storage class
+  spec.param.storageClass: "powerstore-iscsi"
+
+  # Very long VM timeout to prevent timeouts during debugging
+  spec.param.vmiTimeout: "10m"
+
+  # Small number of VMs for easier debugging
+  spec.param.numOfVMs: "5"
+
+  # Always keep resources on failure for inspection
+  spec.param.skipTeardown: "onfailure"
