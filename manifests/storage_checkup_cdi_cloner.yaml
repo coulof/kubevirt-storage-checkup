@@ -1,0 +1,49 @@
+---
+# CDI Cross-Namespace Clone Authorization
+#
+# This ClusterRole grants permission to clone DataVolumes across namespaces.
+# CDI's webhook validates that service accounts have the "datavolumes/source"
+# subresource permission in the source namespace for cross-namespace clones.
+#
+# Required for: VM boot from golden images in a separate namespace
+# Reference: https://github.com/kubevirt/containerized-data-importer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubevirt-storage-checkup-cdi-cloner
+rules:
+  # CDI-specific subresource for cross-namespace clone authorization
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes/source"]
+    verbs: ["create"]
+---
+# Grant clone permission to the checkup service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubevirt-storage-checkup-cdi-cloner
+  namespace: ${GOLDEN_IMAGES_NAMESPACE:-kubevirt-os-images}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubevirt-storage-checkup-cdi-cloner
+subjects:
+- kind: ServiceAccount
+  name: storage-checkup-sa
+  namespace: $CHECKUP_NAMESPACE
+---
+# Grant clone permission to the default service account
+# (VM controller may use this for DataVolume creation)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-cdi-cloner
+  namespace: ${GOLDEN_IMAGES_NAMESPACE:-kubevirt-os-images}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubevirt-storage-checkup-cdi-cloner
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: $CHECKUP_NAMESPACE

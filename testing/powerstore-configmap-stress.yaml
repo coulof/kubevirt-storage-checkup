@@ -1,0 +1,29 @@
+---
+# PowerStore Stress Test Configuration
+# This configuration tests storage limits with many concurrent VMs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-checkup-config
+  namespace: kubevirt-storage-checkup-test
+data:
+  # Very long timeout for stress testing
+  spec.timeout: "60m"
+
+  # Platform
+  spec.param.platform: "vanilla-k8s"
+
+  # Golden images namespace
+  spec.param.goldenImagesNamespace: "kubevirt-os-images"
+
+  # Storage class
+  spec.param.storageClass: "powerstore-iscsi"
+
+  # Longer timeout for stress test
+  spec.param.vmiTimeout: "10m"
+
+  # Boot 50 VMs concurrently for stress test
+  spec.param.numOfVMs: "50"
+
+  # Keep resources on failure for debugging
+  spec.param.skipTeardown: "onfailure"

@@ -1,0 +1,34 @@
+---
+# Role for accessing golden images in a separate namespace
+# Apply this if your golden images are in a different namespace than the checkup
+# Default golden images namespace: kubevirt-os-images (OpenShift) or configurable via spec.param.goldenImagesNamespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubevirt-storage-checkup-golden-images
+  namespace: ${GOLDEN_IMAGES_NAMESPACE:-kubevirt-os-images}
+rules:
+  # Read access to golden images and related resources
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes", "dataimportcrons", "datasources"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubevirt-storage-checkup-golden-images
+  namespace: ${GOLDEN_IMAGES_NAMESPACE:-kubevirt-os-images}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubevirt-storage-checkup-golden-images
+subjects:
+- kind: ServiceAccount
+  name: storage-checkup-sa
+  namespace: $CHECKUP_NAMESPACE

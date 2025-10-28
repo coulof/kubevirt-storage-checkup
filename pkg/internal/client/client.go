@@ -21,10 +21,14 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"log"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
@@ -52,12 +56,17 @@ func New() (*Client, error) {
 		return nil, err
 	}
 
+	// OpenShift client is best-effort - may not exist on vanilla K8s
+	var clusterVersionsGetter configv1client.ClusterVersionsGetter
 	oClient, err := configv1client.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		// This is expected on vanilla K8s - log but don't fail
+		log.Printf("OpenShift config client unavailable (expected on vanilla K8s): %v", err)
+	} else {
+		clusterVersionsGetter = oClient
 	}
 
-	return &Client{client, oClient}, nil
+	return &Client{client, clusterVersionsGetter}, nil
 }
 
 func (c *Client) CreateVirtualMachine(ctx context.Context, namespace string, vm *kvcorev1.VirtualMachine) (
@@ -157,5 +166,26 @@ func (c *Client) GetDataSource(ctx context.Context, namespace, name string) (*cd
 }
 
 func (c *Client) GetClusterVersion(ctx context.Context, name string) (*configv1.ClusterVersion, error) {
+	// Return NotFound error if OpenShift client is unavailable
+	if c.ClusterVersionsGetter == nil {
+		return nil, errors.NewNotFound(
+			schema.GroupResource{Group: "config.openshift.io", Resource: "clusterversions"},
+			name,
+		)
+	}
 	return c.ClusterVersions().Get(ctx, name, metav1.GetOptions{})
+}
+
+// GetKubeVirt retrieves the KubeVirt CR which contains version information
+func (c *Client) GetKubeVirt(ctx context.Context, namespace, name string) (*kvcorev1.KubeVirt, error) {
+	return c.KubeVirt(namespace).Get(name, &metav1.GetOptions{})
+}
+
+// GetKubernetesVersion retrieves the Kubernetes server version
+func (c *Client) GetKubernetesVersion() (string, error) {
+	versionInfo, err := c.Discovery().ServerVersion()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Kubernetes version: %w", err)
+	}
+	return versionInfo.GitVersion, nil
 }

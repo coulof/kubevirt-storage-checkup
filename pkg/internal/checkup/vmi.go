@@ -56,6 +56,7 @@ func newVMUnderTest(name string, pvc *corev1.PersistentVolumeClaim, snap *snapsh
 		vmi.WithDataVolume(dvName, dvOpts...),
 		vmi.WithMemory(guestMemory),
 		vmi.WithTPM(),
+		vmi.WithMasqueradeNetworking(),
 		vmi.WithTerminationGracePeriodSeconds(terminationGracePeriodSeconds),
 		vmi.WithOwnerReference(checkupConfig.PodName, checkupConfig.PodUID),
 	}

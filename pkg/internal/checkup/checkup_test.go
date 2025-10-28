@@ -254,8 +254,14 @@ func expectedResultsNoVMI(expectedResults map[string]string) {
 // FIXME: fill relevant results
 func successfulRunResults(vmiUnderTestName string) map[string]string {
 	return map[string]string{
-		reporter.OCPVersionKey:                                testOCPVersion,
-		reporter.CNVVersionKey:                                testCNVVersion,
+		// Platform and version information
+		reporter.PlatformKey:        "openshift",
+		reporter.OCPVersionKey:      testOCPVersion,
+		reporter.CNVVersionKey:      testCNVVersion,
+		reporter.K8sVersionKey:      "",
+		reporter.KubeVirtVersionKey: "",
+
+		// Storage information
 		reporter.DefaultStorageClassKey:                       testScName,
 		reporter.PVCBoundKey:                                  "PVC \"checkup-pvc\" bound",
 		reporter.StorageProfilesWithEmptyClaimPropertySetsKey: "",
@@ -770,6 +776,23 @@ func (cs *clientStub) GetClusterVersion(ctx context.Context, name string) (*conf
 	}
 
 	return ver, nil
+}
+
+func (cs *clientStub) GetKubeVirt(ctx context.Context, namespace, name string) (*kvcorev1.KubeVirt, error) {
+	kv := &kvcorev1.KubeVirt{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Status: kvcorev1.KubeVirtStatus{
+			ObservedKubeVirtVersion: "v1.1.1",
+		},
+	}
+	return kv, nil
+}
+
+func (cs *clientStub) GetKubernetesVersion() (string, error) {
+	return "v1.28.2", nil
 }
 
 func (cs *clientStub) ListCDIs(ctx context.Context) (*cdiv1.CDIList, error) {

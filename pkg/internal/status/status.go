@@ -24,8 +24,16 @@ import (
 )
 
 type Results struct {
-	OCPVersion                                string
-	CNVVersion                                string
+	// Existing fields - DO NOT REMOVE (backward compatibility)
+	OCPVersion string
+	CNVVersion string
+
+	// New platform fields
+	Platform        string // "openshift" or "vanilla-k8s"
+	K8sVersion      string // For vanilla K8s clusters
+	KubeVirtVersion string // For vanilla K8s clusters
+
+	// Existing storage fields
 	DefaultStorageClass                       string
 	PVCBound                                  string
 	StorageProfilesWithEmptyClaimPropertySets string
