@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/config"
+	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/platform"
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/status"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
@@ -75,6 +76,8 @@ type kubeVirtStorageClient interface {
 	GetCSIDriver(ctx context.Context, name string) (*storagev1.CSIDriver, error)
 	GetDataSource(ctx context.Context, namespace, name string) (*cdiv1.DataSource, error)
 	GetClusterVersion(ctx context.Context, name string) (*configv1.ClusterVersion, error)
+	GetKubeVirt(ctx context.Context, namespace, name string) (*kvcorev1.KubeVirt, error)
+	GetKubernetesVersion() (string, error)
 }
 
 const (
@@ -126,6 +129,9 @@ type Checkup struct {
 	goldenImageSnap     *snapshotv1.VolumeSnapshot
 	vmUnderTest         *kvcorev1.VirtualMachine
 	results             status.Results
+	// Platform detection fields
+	platform         platform.Type
+	platformDetector *platform.Detector
 }
 
 type goldenImagesCheckState struct {
@@ -137,9 +143,10 @@ type goldenImagesCheckState struct {
 
 func New(client kubeVirtStorageClient, namespace string, checkupConfig config.Config) *Checkup {
 	return &Checkup{
-		client:        client,
-		namespace:     namespace,
-		checkupConfig: checkupConfig,
+		client:           client,
+		namespace:        namespace,
+		checkupConfig:    checkupConfig,
+		platformDetector: platform.NewDetector(client),
 	}
 }
 
@@ -214,30 +221,72 @@ func (c *Checkup) Run(ctx context.Context) error {
 func (c *Checkup) checkVersions(ctx context.Context) error {
 	log.Print("checkVersions")
 
-	ver, err := c.client.GetClusterVersion(ctx, "version")
+	// Detect platform (or use configured override)
+	detectedPlatform, err := c.detectPlatform(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("platform detection failed: %w", err)
 	}
+	c.platform = detectedPlatform
+	c.results.Platform = detectedPlatform.String()
+
+	log.Printf("Detected platform: %s", c.platform)
+
+	// Perform platform-specific version detection
+	switch c.platform {
+	case platform.OpenShift:
+		return c.checkVersionsOpenShift(ctx)
+	case platform.VanillaK8s:
+		return c.checkVersionsVanillaK8s(ctx)
+	case platform.Unknown:
+		return fmt.Errorf("unsupported platform: %s", c.platform)
+	default:
+		return fmt.Errorf("unsupported platform: %s", c.platform)
+	}
+}
+
+// detectPlatform determines the platform, respecting config override
+func (c *Checkup) detectPlatform(ctx context.Context) (platform.Type, error) {
+	// If platform is explicitly configured, use it
+	if c.checkupConfig.Platform != "" {
+		configuredPlatform, err := platform.ParseType(c.checkupConfig.Platform)
+		if err != nil {
+			return platform.Unknown, err
+		}
+		log.Printf("Using configured platform: %s", configuredPlatform)
+		return configuredPlatform, nil
+	}
+
+	// Auto-detect platform
+	detectedPlatform, err := c.platformDetector.Detect(ctx)
+	if err != nil {
+		return platform.Unknown, err
+	}
+
+	return detectedPlatform, nil
+}
+
+// checkVersionsOpenShift detects OCP and CNV versions
+func (c *Checkup) checkVersionsOpenShift(ctx context.Context) error {
+	// Get OCP version from ClusterVersion
+	clusterVersion, err := c.client.GetClusterVersion(ctx, "version")
+	if err != nil {
+		return fmt.Errorf("failed to get OCP version: %w", err)
+	}
+
 	ocpVersion := ""
-	for _, update := range ver.Status.History {
+	for _, update := range clusterVersion.Status.History {
 		if update.State == configv1.CompletedUpdate {
-			// obtain the version from the last completed update
+			// Obtain the version from the last completed update
 			ocpVersion = update.Version
 			break
 		}
 	}
 
-	cdis, err := c.client.ListCDIs(ctx)
+	// Get CNV version from CDI
+	cnvVersion, err := c.getCNVVersion(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get CNV version: %w", err)
 	}
-	if len(cdis.Items) == 0 {
-		return errors.New("no CDI deployed in cluster")
-	}
-	if len(cdis.Items) != 1 {
-		return errors.New("expecting single CDI instance in cluster")
-	}
-	cnvVersion := cdis.Items[0].Labels["app.kubernetes.io/version"]
 
 	log.Printf("OCP version: %s, CNV version: %s", ocpVersion, cnvVersion)
 	c.results.OCPVersion = ocpVersion
@@ -246,24 +295,99 @@ func (c *Checkup) checkVersions(ctx context.Context) error {
 	return nil
 }
 
+// checkVersionsVanillaK8s detects Kubernetes and KubeVirt versions
+func (c *Checkup) checkVersionsVanillaK8s(ctx context.Context) error {
+	// Get Kubernetes version from Discovery API
+	k8sVersion, err := c.client.GetKubernetesVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get Kubernetes version: %w", err)
+	}
+
+	// Get KubeVirt version from KubeVirt CR
+	kubeVirtVersion, err := c.getKubeVirtVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get KubeVirt version: %w", err)
+	}
+
+	log.Printf("Kubernetes version: %s, KubeVirt version: %s", k8sVersion, kubeVirtVersion)
+	c.results.K8sVersion = k8sVersion
+	c.results.KubeVirtVersion = kubeVirtVersion
+
+	return nil
+}
+
+// getCNVVersion extracts CNV version from CDI labels
+func (c *Checkup) getCNVVersion(ctx context.Context) (string, error) {
+	cdis, err := c.client.ListCDIs(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if len(cdis.Items) == 0 {
+		return "", fmt.Errorf("no CDI resources found")
+	}
+
+	// Extract version from app label
+	cnvVersion := cdis.Items[0].Labels["app.kubernetes.io/version"]
+	if cnvVersion == "" {
+		return "", fmt.Errorf("CDI resource missing version label")
+	}
+
+	return cnvVersion, nil
+}
+
+// getKubeVirtVersion extracts KubeVirt version from KubeVirt CR
+func (c *Checkup) getKubeVirtVersion(ctx context.Context) (string, error) {
+	const (
+		kubeVirtNamespace = "kubevirt"
+		kubeVirtCRName    = "kubevirt"
+	)
+
+	kv, err := c.client.GetKubeVirt(ctx, kubeVirtNamespace, kubeVirtCRName)
+	if err != nil {
+		return "", err
+	}
+
+	// Version is in status.observedKubeVirtVersion
+	if kv.Status.ObservedKubeVirtVersion == "" {
+		return "", fmt.Errorf("KubeVirt CR missing observed version in status")
+	}
+
+	return kv.Status.ObservedKubeVirtVersion, nil
+}
+
 // FIXME: allow providing specific golden image namespace in the config, instead of scanning all namespaces
 func (c *Checkup) checkGoldenImages(ctx context.Context, namespaces *corev1.NamespaceList, errStr *string) error {
 	log.Print("checkGoldenImages")
 
-	const defaultGoldenImagesNamespace = "openshift-virtualization-os-images"
 	var cs goldenImagesCheckState
 
-	if ns, err := c.client.GetNamespace(ctx, defaultGoldenImagesNamespace); err == nil {
-		if err := c.checkDataImportCrons(ctx, ns.Name, &cs); err != nil {
-			return err
+	// Get golden images namespace (config or platform default)
+	goldenImagesNS := c.getGoldenImagesNamespace()
+
+	// Try configured/default namespace first if specified
+	if goldenImagesNS != "" {
+		ns, err := c.client.GetNamespace(ctx, goldenImagesNS)
+		if err != nil {
+			// Log warning but continue - namespace might not exist
+			log.Printf("Golden images namespace %q not found or inaccessible: %v", goldenImagesNS, err)
+		} else {
+			if err := c.checkDataImportCrons(ctx, ns.Name, &cs); err != nil {
+				return err
+			}
 		}
 	}
 
+	// Scan other namespaces, skipping the default one we already checked
 	for i := range namespaces.Items {
-		if ns := namespaces.Items[i].Name; ns != defaultGoldenImagesNamespace {
-			if err := c.checkDataImportCrons(ctx, ns, &cs); err != nil {
-				return err
-			}
+		ns := namespaces.Items[i].Name
+		// Skip the golden images namespace we already checked
+		if goldenImagesNS != "" && ns == goldenImagesNS {
+			continue
+		}
+
+		if err := c.checkDataImportCrons(ctx, ns, &cs); err != nil {
+			return err
 		}
 	}
 
@@ -293,6 +417,30 @@ func (c *Checkup) checkGoldenImages(ctx context.Context, namespaces *corev1.Name
 		appendSep(errStr, ErrGoldenImageNoDataSource)
 	}
 	return nil
+}
+
+// getGoldenImagesNamespace returns the namespace to search for golden images
+// Priority: 1) Explicit config, 2) Platform-specific default, 3) Empty (scan all)
+func (c *Checkup) getGoldenImagesNamespace() string {
+	// Priority 1: Explicit configuration
+	if c.checkupConfig.GoldenImagesNamespace != "" {
+		return c.checkupConfig.GoldenImagesNamespace
+	}
+
+	// Priority 2: Platform-specific defaults
+	switch c.platform {
+	case platform.OpenShift:
+		return "openshift-virtualization-os-images"
+	case platform.VanillaK8s:
+		// For vanilla K8s, this should have been validated as required in config
+		// If we reach here, validation was skipped or config wasn't validated
+		// Return empty and let it scan all namespaces
+		return ""
+	case platform.Unknown:
+		return ""
+	default:
+		return ""
+	}
 }
 
 func (c *Checkup) checkDataImportCrons(ctx context.Context, namespace string, cs *goldenImagesCheckState) error {
