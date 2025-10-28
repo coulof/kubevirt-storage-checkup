@@ -140,6 +140,29 @@ func WithTPM() Option {
 	}
 }
 
+func WithMasqueradeNetworking() Option {
+	return func(vm *kvcorev1.VirtualMachine) {
+		// Add default pod network with masquerade interface
+		vm.Spec.Template.Spec.Networks = []kvcorev1.Network{
+			{
+				Name: "default",
+				NetworkSource: kvcorev1.NetworkSource{
+					Pod: &kvcorev1.PodNetwork{},
+				},
+			},
+		}
+
+		vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kvcorev1.Interface{
+			{
+				Name: "default",
+				InterfaceBindingMethod: kvcorev1.InterfaceBindingMethod{
+					Masquerade: &kvcorev1.InterfaceMasquerade{},
+				},
+			},
+		}
+	}
+}
+
 func WithTerminationGracePeriodSeconds(terminationGracePeriodSeconds int64) Option {
 	return func(vm *kvcorev1.VirtualMachine) {
 		vm.Spec.Template.Spec.TerminationGracePeriodSeconds = Pointer(terminationGracePeriodSeconds)
