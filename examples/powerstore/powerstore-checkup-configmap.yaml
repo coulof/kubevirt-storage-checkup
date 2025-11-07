@@ -1,0 +1,53 @@
+---
+# PowerStore Storage Checkup Configuration
+# Complete configuration for running storage validation on vanilla K8s with PowerStore
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-checkup-config
+  namespace: kubevirt-storage-checkup-test
+  labels:
+    app: kubevirt-storage-checkup
+    storage: powerstore
+data:
+  # === Checkup Configuration ===
+
+  # Overall timeout for checkup execution
+  spec.timeout: "15m"
+
+  # === Platform Configuration ===
+
+  # Platform type (optional - will auto-detect if not specified)
+  # Values: "openshift" or "vanilla-k8s"
+  spec.param.platform: "vanilla-k8s"
+
+  # Golden images namespace (REQUIRED for vanilla-k8s)
+  # This namespace should contain DataImportCrons for bootable VM images
+  spec.param.goldenImagesNamespace: "kubevirt-os-images"
+
+  # === Storage Configuration ===
+
+  # Storage class to test
+  # Should be your PowerStore iSCSI storage class name
+  spec.param.storageClass: "powerstore-ext4"
+
+  # === VM Configuration ===
+
+  # VM operation timeout
+  # Time to wait for VM boot, migration, hotplug operations
+  # Increase if VMs boot slowly
+  spec.param.vmiTimeout: "3m"
+
+  # Number of VMs for concurrent boot test
+  # Tests ability to boot multiple VMs simultaneously
+  # Range: 1-100, Default: 10
+  spec.param.numOfVMs: "10"
+
+  # === Teardown Configuration ===
+
+  # Teardown behavior after checkup
+  # Values:
+  #   "never" (default): Always cleanup resources
+  #   "onfailure": Skip cleanup on failure (useful for debugging)
+  #   "always": Never cleanup (keeps all resources)
+  spec.param.skipTeardown: "never"

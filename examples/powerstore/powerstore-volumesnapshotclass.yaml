@@ -1,0 +1,27 @@
+---
+# Dell PowerStore Volume Snapshot Class
+# This enables snapshot-based cloning for efficient VM image clones
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: powerstore-snapshot-class
+  annotations:
+    # Set as default VolumeSnapshotClass (optional)
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+
+    # Description
+    description: "Dell PowerStore snapshots for efficient VM cloning"
+
+# Driver - must match the CSI driver name
+driver: csi-powerstore.dellemc.com
+
+# Deletion policy
+# Delete: Delete snapshot when VolumeSnapshot is deleted
+# Retain: Keep snapshot when VolumeSnapshot is deleted
+deletionPolicy: Delete
+
+# Parameters for PowerStore snapshots
+parameters:
+  # PowerStore array ID (globalID)
+  # Must match the storage class arrayID
+  arrayID: "PSd0f53d7a1828"

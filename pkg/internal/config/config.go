@@ -22,6 +22,7 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -30,13 +31,17 @@ import (
 	"github.com/kiagnose/kiagnose/kiagnose/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/platform"
 )
 
 const (
-	StorageClassParamName = "storageClass"
-	VMITimeoutParamName   = "vmiTimeout"
-	NumOfVMsParamName     = "numOfVMs"
-	SkipTeardownParamName = "skipTeardown"
+	StorageClassParamName          = "storageClass"
+	VMITimeoutParamName            = "vmiTimeout"
+	NumOfVMsParamName              = "numOfVMs"
+	SkipTeardownParamName          = "skipTeardown"
+	PlatformParamName              = "platform"
+	GoldenImagesNamespaceParamName = "goldenImagesNamespace"
 )
 
 // SkipTeardownMode defines the possible modes for skipping teardown.
@@ -66,6 +71,13 @@ type Config struct {
 	VMITimeout   time.Duration
 	NumOfVMs     int
 	SkipTeardown SkipTeardownMode
+
+	// Platform override (optional)
+	// Values: "openshift", "vanilla-k8s", or "" (auto-detect)
+	Platform string
+
+	// Golden images namespace (optional for OpenShift, required for vanilla-k8s)
+	GoldenImagesNamespace string
 }
 
 func New(baseConfig kconfig.Config) (Config, error) {
@@ -86,13 +98,43 @@ func setOptionalParams(baseConfig kconfig.Config, newConfig Config) (Config, err
 		newConfig.StorageClass = sc
 	}
 
+	if newConfig, err = setVMITimeout(baseConfig, newConfig); err != nil {
+		return Config{}, err
+	}
+
+	if newConfig, err = setNumOfVMs(baseConfig, newConfig); err != nil {
+		return Config{}, err
+	}
+
+	if newConfig, err = setSkipTeardown(baseConfig, newConfig); err != nil {
+		return Config{}, err
+	}
+
+	// Read platform override (optional)
+	if platformOverride, exists := baseConfig.Params[PlatformParamName]; exists {
+		newConfig.Platform = platformOverride
+	}
+
+	// Read golden images namespace (optional)
+	if goldenImagesNS, exists := baseConfig.Params[GoldenImagesNamespaceParamName]; exists {
+		newConfig.GoldenImagesNamespace = goldenImagesNS
+	}
+
+	return newConfig, nil
+}
+
+func setVMITimeout(baseConfig kconfig.Config, newConfig Config) (Config, error) {
 	if rawVal, exists := baseConfig.Params[VMITimeoutParamName]; exists && rawVal != "" {
-		newConfig.VMITimeout, err = time.ParseDuration(rawVal)
+		timeout, err := time.ParseDuration(rawVal)
 		if err != nil {
 			return Config{}, ErrInvalidVMITimeout
 		}
+		newConfig.VMITimeout = timeout
 	}
+	return newConfig, nil
+}
 
+func setNumOfVMs(baseConfig kconfig.Config, newConfig Config) (Config, error) {
 	if rawVal, exists := baseConfig.Params[NumOfVMsParamName]; exists && rawVal != "" {
 		numOfVMs, err := strconv.Atoi(rawVal)
 		if err != nil || numOfVMs < 1 || numOfVMs > 100 {
@@ -100,7 +142,10 @@ func setOptionalParams(baseConfig kconfig.Config, newConfig Config) (Config, err
 		}
 		newConfig.NumOfVMs = numOfVMs
 	}
+	return newConfig, nil
+}
 
+func setSkipTeardown(baseConfig kconfig.Config, newConfig Config) (Config, error) {
 	if rawVal, exists := baseConfig.Params[SkipTeardownParamName]; exists && rawVal != "" {
 		switch SkipTeardownMode(rawVal) {
 		case SkipTeardownOnFailure, SkipTeardownAlways, SkipTeardownNever:
@@ -115,7 +160,6 @@ func setOptionalParams(baseConfig kconfig.Config, newConfig Config) (Config, err
 			}
 		}
 	}
-
 	return newConfig, nil
 }
 
@@ -160,4 +204,36 @@ func ReadWithDefaults(client kubernetes.Interface, namespace string, rawEnv map[
 	}
 
 	return kconfig.Read(client, rawEnv)
+}
+
+// ValidateForPlatform validates configuration for the detected/specified platform
+func (c *Config) ValidateForPlatform(detectedPlatform platform.Type) error {
+	// If platform is explicitly configured, validate it
+	if c.Platform != "" {
+		configuredPlatform, err := platform.ParseType(c.Platform)
+		if err != nil {
+			return err
+		}
+
+		// Use configured platform for validation
+		detectedPlatform = configuredPlatform
+	}
+
+	// Validate platform-specific requirements
+	if detectedPlatform == platform.VanillaK8s {
+		if c.GoldenImagesNamespace == "" {
+			return fmt.Errorf("goldenImagesNamespace is required when platform is vanilla-k8s")
+		}
+	}
+
+	// Existing validations
+	if c.VMITimeout <= 0 {
+		return fmt.Errorf("vmiTimeout must be positive")
+	}
+
+	if c.NumOfVMs < 1 || c.NumOfVMs > 100 {
+		return fmt.Errorf("numOfVMs must be between 1 and 100")
+	}
+
+	return nil
 }

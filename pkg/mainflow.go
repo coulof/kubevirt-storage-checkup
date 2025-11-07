@@ -26,6 +26,7 @@ import (
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/client"
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/config"
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/launcher"
+	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/platform"
 	"github.com/kiagnose/kubevirt-storage-checkup/pkg/internal/reporter"
 )
 
@@ -42,6 +43,18 @@ func Run(rawEnv map[string]string, namespace string) error {
 
 	cfg, err := config.New(baseConfig)
 	if err != nil {
+		return err
+	}
+
+	// Detect platform before validation
+	platformDetector := platform.NewDetector(c)
+	detectedPlatform, err := platformDetector.Detect(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// Validate config for detected platform
+	if err := cfg.ValidateForPlatform(detectedPlatform); err != nil {
 		return err
 	}
 

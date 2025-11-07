@@ -28,8 +28,14 @@ import (
 )
 
 const (
-	OCPVersionKey                                = "ocpVersion"
-	CNVVersionKey                                = "cnvVersion"
+	// Platform and version constants
+	PlatformKey        = "platform"
+	OCPVersionKey      = "ocpVersion"
+	CNVVersionKey      = "cnvVersion"
+	K8sVersionKey      = "k8sVersion"
+	KubeVirtVersionKey = "kubevirtVersion"
+
+	// Storage constants
 	DefaultStorageClassKey                       = "defaultStorageClass"
 	PVCBoundKey                                  = "pvcBound"
 	StorageProfilesWithEmptyClaimPropertySetsKey = "storageProfilesWithEmptyClaimPropertySets"
@@ -77,8 +83,14 @@ func FormatResults(checkupResults status.Results) map[string]string {
 	}
 
 	formattedResults := map[string]string{
-		OCPVersionKey:          checkupResults.OCPVersion,
-		CNVVersionKey:          checkupResults.CNVVersion,
+		// Platform and version information
+		PlatformKey:        checkupResults.Platform,
+		OCPVersionKey:      checkupResults.OCPVersion,
+		CNVVersionKey:      checkupResults.CNVVersion,
+		K8sVersionKey:      checkupResults.K8sVersion,
+		KubeVirtVersionKey: checkupResults.KubeVirtVersion,
+
+		// Storage information
 		DefaultStorageClassKey: checkupResults.DefaultStorageClass,
 		PVCBoundKey:            checkupResults.PVCBound,
 		StorageProfilesWithEmptyClaimPropertySetsKey: checkupResults.StorageProfilesWithEmptyClaimPropertySets,

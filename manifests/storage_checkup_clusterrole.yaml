@@ -1,0 +1,51 @@
+---
+# ClusterRole with cluster-scoped permissions for kubevirt-storage-checkup
+# Works on both vanilla Kubernetes and OpenShift
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubevirt-storage-checkup
+rules:
+  # Platform detection and cluster information
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods"]
+    verbs: ["get", "list"]
+
+  # Storage resources
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csidrivers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses", "volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims", "persistentvolumes"]
+    verbs: ["get", "list"]
+
+  # KubeVirt resources
+  - apiGroups: ["kubevirt.io"]
+    resources: ["kubevirts", "virtualmachineinstances"]
+    verbs: ["get", "list"]
+
+  # CDI resources
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["cdis", "storageprofiles", "dataimportcrons", "datasources"]
+    verbs: ["get", "list"]
+
+  # OpenShift-specific (optional - gracefully fails on vanilla K8s)
+  - apiGroups: ["config.openshift.io"]
+    resources: ["clusterversions"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubevirt-storage-checkup-$CHECKUP_NAMESPACE
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubevirt-storage-checkup
+subjects:
+- kind: ServiceAccount
+  name: storage-checkup-sa
+  namespace: $CHECKUP_NAMESPACE
